@@ -53,7 +53,7 @@ struct ContentView: View {
                 DeviceDetailView(device: device)
             }
             .navigationDestination(item: $hubToShow) { hub in
-                HubSettingsView(hub: hub)
+                HubSettingsView(hub: hub, connectedDevices: devices.filter(\.isConnected))
             }
         }
         .sheet(item: $activeSheet) { sheet in
