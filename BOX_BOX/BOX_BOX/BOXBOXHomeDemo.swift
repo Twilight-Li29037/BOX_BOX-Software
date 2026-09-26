@@ -10,10 +10,15 @@ struct ContentView: View {
     @State private var activeSheet: ActiveSheet?
     @State private var selectedDeviceID: Device.ID?
     @State private var deviceToShow: Device?
+    @State private var hubToShow: Hub?
     @State private var devices = [
         Device(name: "Camera Bag", distance: 1.2, battery: 86, isConnected: true),
         Device(name: "Keys", distance: 3.8, battery: 72, isConnected: true),
         Device(name: "Laptop Sleeve", distance: nil, battery: 44, isConnected: false)
+    ]
+    private let hubs = [
+        Hub(name: "Watch Hub", battery: 84, isConnected: true),
+        Hub(name: "Square Hub", battery: nil, isConnected: false)
     ]
 
     var body: some View {
@@ -47,11 +52,12 @@ struct ContentView: View {
             .navigationDestination(item: $deviceToShow) { device in
                 DeviceDetailView(device: device)
             }
+            .navigationDestination(item: $hubToShow) { hub in
+                HubSettingsView(hub: hub)
+            }
         }
         .sheet(item: $activeSheet) { sheet in
             switch sheet {
-            case .hubSettings:
-                HubSettingsView()
             case .about:
                 AboutBOXBOXView()
             }
@@ -111,33 +117,29 @@ struct ContentView: View {
     }
 
     private var hubSettingsCard: some View {
-        Button {
-            activeSheet = .hubSettings
-        } label: {
-            HStack(spacing: 16) {
-                Image(systemName: "slider.horizontal.3")
-                    .font(.title2)
-                    .foregroundStyle(.white)
-                    .frame(width: 48, height: 48)
-                    .background(Color.accentColor, in: RoundedRectangle(cornerRadius: 14))
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Hub settings")
+                .font(.title2.bold())
 
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Hub settings")
-                        .font(.headline)
-                        .foregroundStyle(.primary)
-                    Text("Distance alerts, light effects and sound")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
+            VStack(spacing: 10) {
+                ForEach(hubs) { hub in
+                    if hub.isConnected {
+                        Button {
+                            hubToShow = hub
+                        } label: {
+                            HubRow(hub: hub)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityHint("Opens settings for \(hub.name)")
+                    } else {
+                        HubRow(hub: hub)
+                            .opacity(0.42)
+                            .accessibilityHint("\(hub.name) is offline")
+                    }
                 }
-                Spacer()
-                Image(systemName: "chevron.right")
-                    .foregroundStyle(.tertiary)
             }
-            .padding(18)
             .background(Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: 20))
         }
-        .buttonStyle(.plain)
-        .accessibilityHint("Opens hub settings")
     }
 
     private var aboutCard: some View {
@@ -243,53 +245,76 @@ private struct DeviceSelectionCard: View {
 
 private struct DeviceDetailView: View {
     let device: Device
+    @State private var alertDistance = 3.0
+    @State private var soundAndHapticsEnabled = true
 
     var body: some View {
         Form {
-            Section("Connection") {
-                LabeledContent("Status", value: device.isConnected ? "Connected" : "Offline")
-                LabeledContent("Distance", value: device.distance.map { String(format: "%.1f m", $0) } ?? "Not available")
+            Section("Controls") {
+                LabeledContent("Current distance", value: device.distance.map { String(format: "%.1f m", $0) } ?? "Not available")
                 LabeledContent("Battery", value: "\(device.battery)%")
             }
 
-            Section("Controls") {
+            Section("Alarm distance") {
+                Slider(value: $alertDistance, in: 1...10, step: 0.5)
+                LabeledContent("Alert farther than", value: String(format: "%.1f m", alertDistance))
+            }
+
+            Section {
+                Toggle("Haptics | Sound", isOn: $soundAndHapticsEnabled)
+            }
+
+            Section("Connection") {
                 Button("Find this device") { }
-                Button("Rename device") { }
-                Button("Remove pairing", role: .destructive) { }
+                Button("Disconnect") { }
+                Button("Forget device", role: .destructive) { }
+                Button("Report issue") { }
             }
         }
         .navigationTitle(device.name)
     }
 }
 
-private struct HubSettingsView: View {
-    @Environment(\.dismiss) private var dismiss
-    @State private var alertDistance = 3.0
-    @State private var lightsEnabled = true
-    @State private var brightness = 70.0
+private struct HubRow: View {
+    let hub: Hub
 
     var body: some View {
-        NavigationStack {
-            Form {
-                Section("Distance alert") {
-                    Slider(value: $alertDistance, in: 1...10, step: 0.5)
-                    Text("Alert when a tag is farther than \(alertDistance, specifier: "%.1f") m")
-                }
-                Section("Light feedback") {
-                    Toggle("Enable lights", isOn: $lightsEnabled)
-                    Slider(value: $brightness, in: 0...100, step: 5) {
-                        Text("Brightness")
-                    }
-                    Text("Brightness: \(Int(brightness))%")
-                }
+        HStack {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(hub.name)
+                    .font(.headline)
+                    .foregroundStyle(hub.isConnected ? .primary : .secondary)
+                Text(hub.isConnected ? "Connected" : "Offline")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
-            .navigationTitle("Hub settings")
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button("Done") { dismiss() }
-                }
+            Spacer()
+            Text(hub.battery.map { "\($0)%" } ?? "—")
+                .font(.body.monospacedDigit().weight(.semibold))
+                .foregroundStyle(hub.isConnected ? .primary : .secondary)
+            if hub.isConnected {
+                Image(systemName: "chevron.right")
+                    .foregroundStyle(.tertiary)
             }
         }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 14)
+        .background(hub.isConnected ? Color(uiColor: .systemBackground) : Color.clear,
+                    in: RoundedRectangle(cornerRadius: 14))
+    }
+}
+
+private struct HubSettingsView: View {
+    let hub: Hub
+
+    var body: some View {
+        Form {
+            Section("Hub status") {
+                LabeledContent("Connection", value: "Connected")
+                LabeledContent("Battery", value: "\(hub.battery ?? 0)%")
+            }
+        }
+        .navigationTitle(hub.name)
     }
 }
 
@@ -331,6 +356,13 @@ private struct Device: Identifiable, Hashable {
     var isConnected: Bool
 }
 
+private struct Hub: Identifiable, Hashable {
+    let id = UUID()
+    var name: String
+    var battery: Int?
+    var isConnected: Bool
+}
+
 private enum SideTab {
     case profile, settings, help
 
@@ -344,11 +376,10 @@ private enum SideTab {
 }
 
 private enum ActiveSheet: Identifiable {
-    case hubSettings, about
+    case about
 
     var id: String {
         switch self {
-        case .hubSettings: "hub-settings"
         case .about: "about"
         }
     }
